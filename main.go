@@ -104,7 +104,11 @@ func main() {
 	indexerMux.HandleFunc("/search/health", search.HealthHandler)
 	indexerMux.HandleFunc("/search/stats", search.StatsHandler)
 	indexerMux.HandleFunc("/domains", indexers.HandlerDomains)
-	indexerMux.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.FS(public.UIFiles))))
+	uiHandler := http.StripPrefix("/ui/", http.FileServer(http.FS(public.UIFiles)))
+	indexerMux.Handle("/ui/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		uiHandler.ServeHTTP(w, r)
+	}))
 
 	loggedIndexerMux := logging.HTTPLoggingMiddleware(indexerMux)
 
