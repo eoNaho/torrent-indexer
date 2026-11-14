@@ -3,14 +3,19 @@ package requester
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/felipemarinho97/torrent-indexer/logging"
@@ -23,7 +28,8 @@ type FlareSolverr struct {
 	httpClient  *http.Client
 	sessionPool chan string
 	mu          sync.Mutex
-	initiated   bool
+	initiated   atomic.Bool
+	useSessions bool
 }
 
 var (
@@ -38,30 +44,81 @@ func NewFlareSolverr(url string, timeoutMilli int, poolSize int) *FlareSolverr {
 		Timeout: time.Duration(timeoutMilli) * time.Millisecond,
 	}
 	sessionPool := make(chan string, poolSize)
+	useSessions := false
+	if value := strings.TrimSpace(os.Getenv("FLARESOLVERR_USE_SESSIONS")); value != "" {
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			useSessions = parsed
+		}
+	}
 
 	f := &FlareSolverr{
 		url:         url,
 		maxTimeout:  timeoutMilli,
 		httpClient:  httpClient,
 		sessionPool: sessionPool,
+		useSessions: useSessions,
 	}
 
-	err := f.FillSessionPool()
-	if err == nil {
-		f.initiated = true
+	if url == "" {
+		logging.Info().Msg("FlareSolverr is not configured (FLARESOLVERR_ADDRESS empty); Cloudflare-protected indexers will be unavailable")
+		return f
 	}
+
+	if !useSessions {
+		f.initiated.Store(true)
+		logging.Info().Msg("FlareSolverr session reuse disabled; using sessionless requests")
+		return f
+	}
+
+	// Do not block the HTTP server startup on FlareSolverr. The pool is
+	// initialized in the background and requests to protected sites simply
+	// fail fast until it is ready.
+	logging.Info().Str("address", url).Msg("Initializing FlareSolverr session pool in background")
+	go f.initialize()
 
 	return f
 }
 
+func (f *FlareSolverr) initialize() {
+	const maxAttempts = 6
+	const retryDelay = 5 * time.Second
+
+	initClient := &http.Client{Timeout: 10 * time.Second}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err := f.fillSessionPool(initClient)
+		if err == nil && len(f.sessionPool) > 0 {
+			f.initiated.Store(true)
+			logging.Info().Int("sessions", len(f.sessionPool)).Msg("FlareSolverr session pool ready")
+			return
+		}
+
+		if err != nil {
+			logging.Warn().Err(err).Int("attempt", attempt).Int("max_attempts", maxAttempts).Msg("FlareSolverr not ready yet; retrying")
+		} else {
+			logging.Warn().Int("attempt", attempt).Int("max_attempts", maxAttempts).Msg("FlareSolverr session pool is empty; retrying")
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(retryDelay)
+		}
+	}
+
+	logging.Error().Msg("Failed to initialize FlareSolverr session pool; protected indexers will be unavailable")
+}
+
 func (f *FlareSolverr) FillSessionPool() error {
+	return f.fillSessionPool(f.httpClient)
+}
+
+func (f *FlareSolverr) fillSessionPool(client *http.Client) error {
 	// Check if the pool is already filled
 	if len(f.sessionPool) == cap(f.sessionPool) {
 		return nil
 	}
 
 	// Pre-initialize the pool with existing sessions
-	sessions, err := f.ListSessions()
+	sessions, err := f.listSessions(client)
 	if err != nil {
 		// if fail to list sessions, it may not support the sessions.list command
 		// create new dumb sessions to fill the pool
@@ -73,31 +130,51 @@ func (f *FlareSolverr) FillSessionPool() error {
 		}
 		logging.Error().Err(err).Msg("Failed to list existing FlareSolverr sessions")
 		return err
-	} else {
-		for _, session := range sessions {
-			// Add available sessions to the pool
-			if len(f.sessionPool) < cap(f.sessionPool) {
-				f.sessionPool <- session
-			}
+	}
+
+	for _, session := range sessions {
+		// Add available sessions to the pool
+		if len(f.sessionPool) < cap(f.sessionPool) {
+			f.sessionPool <- session
 		}
-		if len(f.sessionPool) > 0 {
-			logging.Info().Int("sessions", len(f.sessionPool)).Msg("Added FlareSolverr sessions to the pool")
+	}
+	if len(f.sessionPool) > 0 {
+		logging.Info().Int("sessions", len(f.sessionPool)).Msg("Added FlareSolverr sessions to the pool")
+	}
+
+	// If fewer than poolSize sessions were found, create new ones to fill the
+	// pool. Bound the attempts to avoid an infinite loop when the FlareSolverr
+	// instance keeps rejecting session creation.
+	for attempts := 0; attempts < cap(f.sessionPool) && len(f.sessionPool) < cap(f.sessionPool); attempts++ {
+		if f.createSession(client) == "" {
+			break
 		}
 	}
 
-	// If fewer than poolSize sessions were found, create new ones to fill the pool
-	for len(f.sessionPool) < cap(f.sessionPool) {
-		f.CreateSession()
+	if len(f.sessionPool) == 0 {
+		return fmt.Errorf("no FlareSolverr sessions available")
 	}
 
 	return nil
 }
 
 func (f *FlareSolverr) CreateSession() string {
+	return f.createSession(f.httpClient)
+}
+
+func (f *FlareSolverr) createSession(client *http.Client) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	body := map[string]string{"cmd": "sessions.create"}
+	// FlareSolverr-Go requires the caller to provide a session ID; the Python
+	// FlareSolverr API usually generates one when this field is omitted.
+	sessionBytes := make([]byte, 16)
+	if _, err := rand.Read(sessionBytes); err != nil {
+		logging.Error().Err(err).Msg("Failed to generate FlareSolverr session ID")
+		return ""
+	}
+	sessionID := "torrent-indexer-" + hex.EncodeToString(sessionBytes)
+	body := map[string]string{"cmd": "sessions.create", "session": sessionID}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return ""
@@ -110,7 +187,7 @@ func (f *FlareSolverr) CreateSession() string {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := f.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}
@@ -125,6 +202,13 @@ func (f *FlareSolverr) CreateSession() string {
 
 	session, ok := sessionResponse["session"].(string)
 	if !ok {
+		// FlareSolverr-Go returns IDs in `sessions`; other implementations may
+		// return the single ID in `session`.
+		if sessions, valid := sessionResponse["sessions"].([]interface{}); valid && len(sessions) > 0 {
+			session, ok = sessions[0].(string)
+		}
+	}
+	if !ok || session == "" {
 		logging.Error().Msg("Failed to create FlareSolverr session")
 		return ""
 	}
@@ -136,6 +220,10 @@ func (f *FlareSolverr) CreateSession() string {
 }
 
 func (f *FlareSolverr) ListSessions() ([]string, error) {
+	return f.listSessions(f.httpClient)
+}
+
+func (f *FlareSolverr) listSessions(client *http.Client) ([]string, error) {
 	body := map[string]string{"cmd": "sessions.list"}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -149,7 +237,7 @@ func (f *FlareSolverr) ListSessions() ([]string, error) {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := f.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -162,13 +250,22 @@ func (f *FlareSolverr) ListSessions() ([]string, error) {
 		return nil, err
 	}
 	if sessionsResponse["sessions"] == nil {
+		// FlareSolverr-Go omits the field for a successful empty list.
+		if sessionsResponse["status"] == "ok" {
+			return []string{}, nil
+		}
 		return nil, ErrListSessions
 	}
 
-	sessions := sessionsResponse["sessions"].([]interface{})
+	sessions, valid := sessionsResponse["sessions"].([]interface{})
+	if !valid {
+		return nil, fmt.Errorf("invalid FlareSolverr sessions response")
+	}
 	var sessionIDs []string
 	for _, session := range sessions {
-		sessionIDs = append(sessionIDs, session.(string))
+		if id, ok := session.(string); ok && id != "" {
+			sessionIDs = append(sessionIDs, id)
+		}
 	}
 
 	return sessionIDs, nil
@@ -200,34 +297,47 @@ type Response struct {
 			Secure   bool   `json:"secure"`
 			Value    string `json:"value"`
 		} `json:"cookies"`
-		UserAgent string            `json:"userAgent"`
-		Headers   map[string]string `json:"headers"`
-		Response  string            `json:"response"`
+		UserAgent string          `json:"userAgent"`
+		Headers   json.RawMessage `json:"headers"`
+		Response  string          `json:"response"`
 	} `json:"solution"`
 }
 
 func (f *FlareSolverr) Get(ctx context.Context, _url string, attempts int) (io.ReadCloser, error) {
+	return f.GetWithHeaders(ctx, _url, attempts, nil)
+}
+
+func (f *FlareSolverr) GetWithHeaders(ctx context.Context, _url string, attempts int, headers map[string]string) (io.ReadCloser, error) {
 	// Check if the FlareSolverr instance was initiated
-	if !f.initiated {
+	if !f.initiated.Load() {
+		logging.Debug().Str("url", _url).Msg("FlareSolverr is not ready yet; returning empty response")
 		return io.NopCloser(bytes.NewReader([]byte(""))), nil
 	}
 
-	// Retrieve session from the pool (blocking if no sessions available)
-	session, err := f.RetrieveSession(ctx)
-	if err != nil {
-		return nil, err
-	}
+	session := ""
+	if f.useSessions {
+		var err error
+		session, err = f.RetrieveSession(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-	// Ensure the session is returned to the pool after the request is done
-	defer func() {
-		f.sessionPool <- session
-	}()
+		// Ensure the session is returned to the pool after the request is done
+		defer func() {
+			f.sessionPool <- session
+		}()
+	}
 
 	body := map[string]interface{}{
 		"cmd":        "request.get",
 		"url":        _url,
 		"maxTimeout": f.maxTimeout,
-		"session":    session,
+	}
+	if f.useSessions {
+		body["session"] = session
+	}
+	if len(headers) > 0 {
+		body["headers"] = headers
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -259,7 +369,7 @@ func (f *FlareSolverr) Get(ctx context.Context, _url string, attempts int) (io.R
 		if resp.StatusCode == http.StatusInternalServerError && attempts != 0 {
 			attempts--
 			logging.Warn().Str("url", _url).Int("attempts_left", attempts).Msg("FlareSolverr Internal Server Error, retrying")
-			return f.Get(ctx, _url, attempts) // Retry the request
+			return f.GetWithHeaders(ctx, _url, attempts, headers) // Retry the request
 		}
 
 		// log the http status code

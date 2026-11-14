@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
+	"net/url"
+	"strings"
 )
 
 func DecodeAdLink(encodedStr string) (string, error) {
@@ -93,4 +95,111 @@ func DecodeStarckDataU(dataU string) (string, error) {
 
 func IsMagnetLink(link string) bool {
 	return len(link) > 8 && link[:8] == "magnet:?"
+}
+
+// DecodeStarckXid decodes the obfuscated magnet link from the "xid" query parameter
+// of the download links (e.g. https://filmedl.com/?xid=...). The value is the base64
+// of the magnet link, shuffled with the same stepping cursor used by data-u. This is indexer-specific.
+func DecodeStarckXid(xid string) (string, error) {
+	if xid == "" {
+		return "", fmt.Errorf("empty xid value")
+	}
+
+	unshuffled, err := unshuffleStringByStep(xid, 3)
+	if err != nil {
+		return "", fmt.Errorf("unshuffle failed: %w", err)
+	}
+
+	var decoded []byte
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		decoded, err = enc.DecodeString(unshuffled)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("base64 decode failed: %w", err)
+	}
+
+	magnetLink := string(decoded)
+	if !IsMagnetLink(magnetLink) {
+		return "", fmt.Errorf("decoded string is not a valid magnet link: %s", magnetLink)
+	}
+
+	return magnetLink, nil
+}
+
+// UnshuffleStringByStep reconstructs a string that was shuffled with the same
+// stepping cursor algorithm. It is used by the Starck Filmes download resolver.
+func UnshuffleStringByStep(shuffled string, step int) (string, error) {
+	return unshuffleStringByStep(shuffled, step)
+}
+
+func DecodeSystemAdsLink(encodedURL string) (string, error) {
+	u, err := url.Parse(encodedURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid systemads URL: %w", err)
+	}
+	idParam := u.Query().Get("id")
+	if idParam == "" {
+		return "", fmt.Errorf("no 'id' parameter in systemads URL")
+	}
+
+	idParam, err = url.PathUnescape(idParam)
+	if err != nil {
+		return "", fmt.Errorf("failed to URL-decode id: %w", err)
+	}
+	idParam = strings.ReplaceAll(idParam, " ", "+")
+
+	link, err := decodeSystemAdsID(idParam)
+	if err == nil && IsMagnetLink(link) {
+		return link, nil
+	}
+	if err == nil && len(link) > 7 && (link[:7] == "http://" || link[:8] == "https://") {
+		return link, nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to decode systemads id: %w", err)
+	}
+	return "", fmt.Errorf("decoded systemads id is not a magnet or HTTP link: %s", link)
+}
+
+func decodeSystemAdsID(id string) (string, error) {
+	decodedBytes, err := base64.StdEncoding.DecodeString(id)
+	if err == nil {
+		decoded := string(decodedBytes)
+		if len(decoded) > 0 {
+			return decoded, nil
+		}
+	}
+
+	decodedBytes, err = base64.RawStdEncoding.DecodeString(id)
+	if err == nil {
+		decoded := string(decodedBytes)
+		if len(decoded) > 0 {
+			return decoded, nil
+		}
+	}
+
+	decodedBytes, err = base64.URLEncoding.DecodeString(id)
+	if err == nil {
+		decoded := string(decodedBytes)
+		if len(decoded) > 0 {
+			return decoded, nil
+		}
+	}
+
+	if len(id) > 0 {
+		reversed := reverseString(id)
+		decodedBytes, err = base64.StdEncoding.DecodeString(reversed)
+		if err == nil {
+			decoded := html.UnescapeString(string(decodedBytes))
+			if len(decoded) > 0 {
+				return decoded, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("all decoding strategies failed for: %s", id)
 }
