@@ -25,7 +25,7 @@ import (
 
 var vacaTorrent = IndexerMeta{
 	Label:       "vaca_torrent",
-	URL:         utils.GetIndexerURLFromEnv("INDEXER_VACA_TORRENT_URL", "https://vacatorrentmov.com/"),
+	URL:         utils.GetIndexerURLFromEnv("INDEXER_VACA_TORRENT_URL", "https://vaqueirofilmes.com/"),
 	SearchURL:   "wp-admin/admin-ajax.php",
 	PagePattern: "page/%s",
 }
@@ -111,6 +111,13 @@ func (i *Indexer) HandlerVacaTorrentIndexer(w http.ResponseWriter, r *http.Reque
 	// if no links were indexed, expire the document in cache
 	if len(links) == 0 {
 		_ = i.requester.ExpireDocument(ctx, targetURL)
+		if strings.Contains(strings.ToLower(doc.Find("title").Text()), "vaqueiro") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "vaca_torrent domain no longer serves the expected site (it redirects to vaqueirofilmes1.com); set INDEXER_VACA_TORRENT_URL to a working domain"})
+			i.metrics.IndexerErrors.WithLabelValues(metadata.Label).Inc()
+			return
+		}
 	}
 
 	soraFetcher, err := utils.NewSoraLinkFetcher("https://vacadb.org", i.redis)
@@ -208,6 +215,9 @@ func postSearchVacaTorrent(ctx context.Context, i *Indexer, targetURL, query, pa
 	var ajaxResp VacaTorrentAjaxResponse
 	err = json.Unmarshal(bodyBytes, &ajaxResp)
 	if err != nil {
+		if strings.Contains(strings.ToLower(string(bodyBytes)), "vaqueiro") {
+			return nil, fmt.Errorf("vaca_torrent domain no longer serves the expected site (it redirects to vaqueirofilmes1.com); set INDEXER_VACA_TORRENT_URL to a working domain")
+		}
 		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
@@ -347,6 +357,15 @@ func getTorrentsVacaTorrent(ctx context.Context, i *Indexer, link, referer strin
 			}
 		}
 	})
+
+	// Since 2026-10 downloads are behind /movie-links/<id>/ -> /enc/go.php?id=<encrypted>,
+	// which ends in an ad wall with a countdown, so there is nothing to extract here.
+	if len(magnetLinks) == 0 && doc.Find("a[href*=\"/movie-links/\"], a[href*=\"/enc/go.php\"]").Length() > 0 {
+		logging.Warn().
+			Str("url", link).
+			Str("indexer", vacaTorrent.Label).
+			Msg("Post only has protected movie-links/enc links, magnets are not available")
+	}
 
 	size = utils.StableUniq(size)
 

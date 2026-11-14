@@ -19,7 +19,9 @@ const (
 	cacheKey = "shortLivedCache"
 )
 
-var challangeRegex = regexp.MustCompile(`(?i)(just a moment|cf-chl-bypass|under attack)`)
+// challangeRegex matches anti-bot pages that must not be cached and should be retried
+// through FlareSolverr: Cloudflare and the custom "VaqueiroCine · Proteção Anti-Bot" page.
+var challangeRegex = regexp.MustCompile(`(?i)(just a moment|cf-chl-bypass|under attack|verificando acesso|prote[çc][ãa]o anti-bot)`)
 
 type Requster struct {
 	fs                        *FlareSolverr
@@ -139,6 +141,16 @@ func (i *Requster) GetDocument(ctx context.Context, url string, referer ...strin
 func (i *Requster) ExpireDocument(ctx context.Context, url string) error {
 	key := fmt.Sprintf("%s:%s", cacheKey, url)
 	return i.c.Del(ctx, key)
+}
+
+func (i *Requster) GetDocumentWithFlareSolverr(ctx context.Context, url string, referer ...string) (io.ReadCloser, error) {
+	headers := map[string]string{}
+	if len(referer) > 0 {
+		if referer[0] != "" {
+			headers["Referer"] = referer[0]
+		}
+	}
+	return i.fs.GetWithHeaders(ctx, url, 3, headers)
 }
 
 // hasChallange checks if the body contains a challange by regex matching

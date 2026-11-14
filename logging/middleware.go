@@ -38,12 +38,12 @@ func HTTPLoggingMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		rw := NewResponseWriter(w)
 		clientIP := getClientIP(r)
-		
+
 		// Call the next handler
 		next.ServeHTTP(rw, r)
-		
+
 		duration := time.Since(start)
-		
+
 		// Determine log level based on status code
 		event := log.Info()
 		if rw.statusCode >= 400 && rw.statusCode < 500 {
@@ -51,7 +51,7 @@ func HTTPLoggingMiddleware(next http.Handler) http.Handler {
 		} else if rw.statusCode >= 500 {
 			event = log.Error() // Server errors (5xx)
 		}
-		
+
 		// Build the log event
 		logEvent := event.
 			Str("client_ip", clientIP).
@@ -61,12 +61,12 @@ func HTTPLoggingMiddleware(next http.Handler) http.Handler {
 			Int("status", rw.statusCode).
 			Int64("bytes", rw.written).
 			Dur("duration", duration)
-		
+
 		// Only add query if it's present
 		if r.URL.RawQuery != "" {
 			logEvent = logEvent.Str("query", r.URL.RawQuery)
 		}
-		
+
 		// Log with a formatted message
 		logEvent.Msgf("%s %s %d %dB %v", r.Method, r.URL.Path, rw.statusCode, rw.written, duration)
 	})

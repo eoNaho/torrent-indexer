@@ -11,12 +11,12 @@ Visit [https://torrent-indexer.darklyn.org/](https://torrent-indexer.darklyn.org
 
 ## Supported sites
 
-- [comando-torrents](https://comando.la/)
-- [bludv](https://bludvfilmes.tv/)
-- [torrent-dos-filmes](https://torrentdosfilmes.se/)
-- [starck-filmes](https://www.starckfilmes.fans/)
-- [rede-torrent](https://redetorrent.com/)
-- [vaca-torrent](https://vacatorrentmov.com/)
+- [comando-torrents](https://comando1.com/)
+- [bludv](https://bludvfilmes2.xyz/)
+- [torrent-dos-filmes](https://torrentdosfilmes-v2.xyz/)
+- [starck-filmes](https://starckfilmes-v28.com/)
+- [rede-torrent](https://redestorrents.com/)
+- [vaca-torrent](https://vaqueirofilmes.com/)
 
 ## Deploy
 
@@ -34,13 +34,15 @@ The server will be available at [http://localhost:8080/](http://localhost:8080/)
 You can configure the server using the following environment variables:
   
 - `PORT`: (optional) The port that the server will listen to. Default: `7006`
-- `METRICS_PORT`: (optional) The port that the metrics server will listen to. Default: `8081`
+- `HOST`: (optional) Bind address. Default: `127.0.0.1`; set `0.0.0.0` to allow LAN access.
+- `METRICS_PORT`: (optional) The port that the metrics server will listen to. Default: `9081`
 - `LOG_LEVEL`: (optional) The log level. Default: `1` (info). 
   - Possible values: `0` (debug), `1` (info), `2` (warn), `3` (error)
 - `LOG_FORMAT`: (optional) The log format. Can be "json" or default to console logger.
 - `FLARESOLVERR_ADDRESS`: (optional) The address of the FlareSolverr instance. Default: `N/A`
 - `FLARESOLVERR_TIMEOUT_SECONDS`: (optional) Timeout for flaresolverr requests. Default: `30`
 - `FLARESOLVERR_POOL_SIZE`: (optional) Number of FlareSolverr sessions in the pool. Default: `5`
+- `FLARESOLVERR_USE_SESSIONS`: (optional) Reuse browser sessions. Default: `false`; sessionless mode also works with FlareSolverr-Go.
 - `REQUEST_TIMEOUT_MILLISECONDS`: (optional) Timeout for external scraping requests. Default: `5000`
 - `MEILISEARCH_ADDRESS`: (optional) The address of the MeiliSearch instance. Default: `N/A`
 - `MEILISEARCH_KEY`: (optional) The API key of the MeiliSearch instance. Default: `N/A`
@@ -59,6 +61,16 @@ You can configure the server using the following environment variables:
 - `MAGNET_METADATA_API_ADDRESS`: (optional) The address of your magnet metadata API. Default: `N/A`
 - `MAGNET_METADATA_API_TIMEOUT_SECONDS`: (optional) The timeout for the magnet metadata API requests in seconds. Default: `10`
 - `INDEXER_<NAME>_URL`: (optional) Set a custom URL for the indexer. Where the "NAME" will be always uppercase indexer key with underscores. ex: `INDEXER_DODO_FILMES_URL=https://my-proxied-dodo-url.org`
+
+    | Endpoint (`/indexers/...`) | Variable | Default |
+    |---|---|---|
+    | `comando_torrents` | `INDEXER_COMANDO_URL` | `https://comando1.com/` |
+    | `bludv` | `INDEXER_BLUDV_URL` | `https://bludvfilmes2.xyz/` |
+    | `torrent-dos-filmes` | `INDEXER_TORRENT_DOS_FILMES_URL` | `https://torrentdosfilmes-v2.xyz/` |
+    | `starck-filmes` | `INDEXER_STARCK_FILMES_URL` | `https://starckfilmes-v28.com/` |
+    | `rede_torrent` | `INDEXER_REDE_TORRENT_URL` | `https://redestorrents.com/` |
+    | `vaca_torrent` | `INDEXER_VACA_TORRENT_URL` | `https://vaqueirofilmes.com/` |
+
 ## Integrating with Jackett
 
 You can integrate this indexer with Jackett by adding a new Torznab custom indexer. Here is an example of how to do it for the `bludv` indexer:
@@ -136,7 +148,20 @@ search:
 
 ## Integrating with Prowlarr
 
-You can integrate this indexer with Prowlarr by adding a custom definition. See [Adding a custom YML definition](https://wiki.servarr.com/prowlarr/indexers#adding-a-custom-yml-definition).
+The server exposes a native Torznab API. In Prowlarr, add a **Generic Torznab** indexer for each source. Use the matching API path:
+
+| Source | API path |
+|---|---|
+| BluDV | `/api/bludv` |
+| Comando Torrents | `/api/comando_torrents` |
+| Rede Torrent | `/api/rede_torrent` |
+| Starck Filmes | `/api/starck-filmes` |
+| Torrent dos Filmes | `/api/torrent-dos-filmes` |
+| Vaca Torrent | `/api/vaca_torrent` |
+
+For example, on the same host use `http://127.0.0.1:7006/api/rede_torrent`. When Prowlarr is on another device, bind the service to the LAN with `HOST=0.0.0.0` and use the server's LAN address. The API key field can be left empty.
+
+Custom Cardigann definitions remain supported as an alternative. See [Prowlarr's custom definition instructions](https://wiki.servarr.com/prowlarr/indexers#adding-a-custom-yml-definition).
 
 ```yaml
 ---
@@ -222,6 +247,16 @@ search:
     category:
       text: "{{ if .Result.category_is_tv_show }}TV{{ else }}Movies{{ end }}"
 ```
+
+## Integrated media tools
+
+- [`integrations/homepage`](integrations/homepage/README.md): optional Homepage UI source for media requests, subtitles, status, and service shortcuts.
+- [`integrations/media-control/agent`](integrations/media-control/agent/README.md): optional local API backing that UI. It is separate from the torrent-indexer runtime.
+- [`docs/FORK_CONSOLIDATION.md`](docs/FORK_CONSOLIDATION.md): source branches and integration notes.
+
+## Android / Termux
+
+The ARM64 binary can run inside Debian under Termux without Docker. The phone-specific environment example and launch wrapper are in [`deploy/termux-debian`](deploy/termux-debian/README.md). FlareSolverr-Go works in sessionless mode; set `FLARESOLVERR_USE_SESSIONS=true` only when you need persistent browser sessions.
 
 
 ## Mirrors

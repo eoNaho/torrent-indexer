@@ -20,7 +20,7 @@ import (
 
 var starck_filmes = IndexerMeta{
 	Label:       "starck_filmes",
-	URL:         utils.GetIndexerURLFromEnv("INDEXER_STARCK_FILMES_URL", "https://www.starckfilmes-v10.com/"),
+	URL:         utils.GetIndexerURLFromEnv("INDEXER_STARCK_FILMES_URL", "https://starckfilmes-v28.com/"),
 	SearchURL:   "?s=",
 	PagePattern: "page/%s",
 }
@@ -125,22 +125,33 @@ func getTorrentStarckFilmes(ctx context.Context, i *Indexer, link, referer strin
 	capa := post.Find(".capa")
 	title := capa.Find(".post-description > h2").Text()
 	post_buttons := post.Find(".post-buttons")
-	magnets := post_buttons.Find("a[href^=\"magnet\"]")
-	var magnetLinks []string
-	magnets.Each(func(i int, s *goquery.Selection) {
-		magnetLink, _ := s.Attr("href")
-		magnetLinks = append(magnetLinks, magnetLink)
+	magnetLinks := extractStarckMagnets(post_buttons)
+
+	// Newer pages hide the magnet behind a filmedl.com redirect chain.
+	var filmedlLinks []string
+	post.Find("a[href*=\"filmedl.com/?xid=\"]").Each(func(_ int, s *goquery.Selection) {
+		href, _ := s.Attr("href")
+		if href != "" {
+			filmedlLinks = append(filmedlLinks, href)
+		}
 	})
-	dataUs := post_buttons.Find("a[data-u]")
-	dataUs.Each(func(i int, s *goquery.Selection) {
-		dataU, _ := s.Attr("data-u")
-		magnetLink, err := utils.DecodeStarckDataU(dataU)
+	for _, filmedlLink := range filmedlLinks {
+		parsedURL, parseErr := url.Parse(filmedlLink)
+		if parseErr == nil {
+			xid := strings.ReplaceAll(parsedURL.Query().Get("xid"), " ", "+")
+			if magnetLink, decodeErr := utils.DecodeStarckXid(xid); decodeErr == nil {
+				magnetLinks = append(magnetLinks, magnetLink)
+				continue
+			}
+		}
+		magnetLink, err := resolveFilmedlMagnet(ctx, filmedlLink, link)
 		if err != nil {
-			logging.Warn().Err(err).Str("data_u", dataU).Msg("Failed to decode data-u attribute, skipping")
-			return
+			logging.Warn().Err(err).Str("url", filmedlLink).Msg("Failed to resolve filmedl download link, skipping")
+			continue
 		}
 		magnetLinks = append(magnetLinks, magnetLink)
-	})
+	}
+	magnetLinks = utils.StableUniq(magnetLinks)
 
 	var audio []schema.Audio
 	var year string
@@ -208,7 +219,11 @@ func getTorrentStarckFilmes(ctx context.Context, i *Indexer, link, referer strin
 				logging.Error().Err(err).Str("info_hash", infoHash).Msg("Failed to get leechers and seeders")
 			}
 
+			baseTitle := strings.TrimSpace(title)
 			title := processTitle(title, magnetAudio)
+			if strings.TrimSpace(releaseTitle) == "" {
+				releaseTitle = baseTitle
+			}
 
 			// if the number of sizes is equal to the number of magnets, then assign the size to each indexed torrent in order
 			var mySize string
@@ -246,4 +261,41 @@ func getTorrentStarckFilmes(ctx context.Context, i *Indexer, link, referer strin
 	}
 
 	return indexedTorrents, nil
+}
+
+// extractStarckMagnets collects the magnet links from the download buttons. It supports
+// plain magnet links, the obfuscated data-u attribute and, since 2026-10, the "xid"
+// query parameter of the external download links (e.g. https://filmedl.com/?xid=...).
+func extractStarckMagnets(buttons *goquery.Selection) []string {
+	var magnetLinks []string
+	buttons.Find("a[href^=\"magnet\"]").Each(func(_ int, s *goquery.Selection) {
+		magnetLink, _ := s.Attr("href")
+		magnetLinks = append(magnetLinks, magnetLink)
+	})
+	buttons.Find("a[data-u]").Each(func(_ int, s *goquery.Selection) {
+		dataU, _ := s.Attr("data-u")
+		magnetLink, err := utils.DecodeStarckDataU(dataU)
+		if err != nil {
+			logging.Warn().Err(err).Str("data_u", dataU).Msg("Failed to decode data-u attribute, skipping")
+			return
+		}
+		magnetLinks = append(magnetLinks, magnetLink)
+	})
+	buttons.Find("a[href*=\"xid=\"]").Each(func(_ int, s *goquery.Selection) {
+		href, _ := s.Attr("href")
+		parsedURL, err := url.Parse(href)
+		if err != nil {
+			logging.Warn().Err(err).Str("href", href).Msg("Failed to parse xid link, skipping")
+			return
+		}
+		// a "+" from a standard base64 alphabet would be decoded as a space
+		xid := strings.ReplaceAll(parsedURL.Query().Get("xid"), " ", "+")
+		magnetLink, err := utils.DecodeStarckXid(xid)
+		if err != nil {
+			logging.Warn().Err(err).Str("href", href).Msg("Failed to decode xid, skipping")
+			return
+		}
+		magnetLinks = append(magnetLinks, magnetLink)
+	})
+	return utils.StableUniq(magnetLinks)
 }
