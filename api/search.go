@@ -100,6 +100,7 @@ func (h *MeilisearchHandler) SearchTorrentHandler(w http.ResponseWriter, r *http
 		"count":   len(results),
 	}
 
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)

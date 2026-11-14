@@ -174,7 +174,10 @@
       }
 
       try {
-        const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+        const searchURL = new URL('/search', window.location.origin);
+        searchURL.searchParams.set('q', query);
+        searchURL.searchParams.set('_', Date.now().toString());
+        const response = await fetch(searchURL, { cache: 'no-store' });
         if (!response.ok) {
           throw new Error('Search failed');
         }
