@@ -255,6 +255,10 @@ search:
 - [`integrations/media-control/agent`](integrations/media-control/agent/README.md): optional local API backing that UI. It is separate from the torrent-indexer runtime.
 - [`docs/FORK_CONSOLIDATION.md`](docs/FORK_CONSOLIDATION.md): source branches and integration notes.
 
+## Web search dashboard
+
+The project includes a torrent search interface at `/ui/`. Open `http://<server>:7006/ui/` when the service is reachable. Search uses Meilisearch, so set `MEILISEARCH_ADDRESS` (and `MEILISEARCH_KEY` when authentication is enabled) in the indexer's environment. Without a reachable Meilisearch instance, the page loads but search and index statistics report that the search service is unavailable. `/healthz` is a lightweight JSON liveness endpoint for dashboards such as Glance.
+
 ## Android / Termux
 
 The ARM64 binary can run inside Debian under Termux without Docker. The phone-specific environment example and launch wrapper are in [`deploy/termux-debian`](deploy/termux-debian/README.md). FlareSolverr-Go works in sessionless mode; set `FLARESOLVERR_USE_SESSIONS=true` only when you need persistent browser sessions.
