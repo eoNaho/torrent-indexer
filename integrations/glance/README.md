@@ -1,8 +1,9 @@
 # Glance widget
 
-This integration adds a compact status widget for the torrent-indexer HTTP
-service and a link to its built-in search page. It uses Glance's built-in
-`custom-api` widget and the indexer's `/healthz` endpoint.
+This integration adds an operational summary for the torrent-indexer: search
+health, indexed release count, indexing state, and a link to the built-in
+search page. It uses Glance's built-in `custom-api` widget and the indexer's
+search endpoints.
 
 1. Set `TORRENT_INDEXER_URL` in Glance's environment to the base URL reachable
    from the Glance process, without a trailing slash. For example,
@@ -10,7 +11,9 @@ service and a link to its built-in search page. It uses Glance's built-in
    or `http://torrent-indexer:7006` when they share a Docker network.
 2. Set `TORRENT_INDEXER_DASHBOARD_URL` to the browser-reachable URL of the
    search page, such as `http://192.168.0.114:7006/ui/` on a private LAN.
-3. Include `torrent-indexer.yml` in a page's `widgets` list:
+3. Append `torrent-indexer.css` to the CSS file already used by Glance. Keep
+   your existing theme and widget styles.
+4. Include `torrent-indexer.yml` in a page's `widgets` list:
 
    ```yaml
    pages:
@@ -21,10 +24,10 @@ service and a link to its built-in search page. It uses Glance's built-in
              - $include: /app/config/widgets/torrent-indexer.yml
    ```
 
-4. Mount/copy this file to the path used by the `$include` and restart Glance
+5. Mount/copy the widget YAML to the path used by `$include`, then restart Glance
    (or wait for its config auto-reload).
 
-The endpoint is a liveness check: it reports whether the indexer HTTP process
-is responding. It does not check Redis, FlareSolverr, or individual torrent
-sites. Keep the Glance URL on the private network unless you intentionally
-publish the service.
+The widget reports the Meilisearch health and document count exposed by the
+indexer. It does not check Redis, FlareSolverr, or individual torrent sites.
+Keep the Glance URL on the private network unless you intentionally publish
+the service.

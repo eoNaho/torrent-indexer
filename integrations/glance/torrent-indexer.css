@@ -1,0 +1,202 @@
+.torrent-indexer .ti-card {
+  display: grid;
+  gap: 14px;
+}
+
+.torrent-indexer .ti-heading,
+.torrent-indexer .ti-summary,
+.torrent-indexer .ti-footer {
+  display: flex;
+  align-items: center;
+}
+
+.torrent-indexer .ti-heading {
+  gap: 12px;
+  min-width: 0;
+}
+
+.torrent-indexer .ti-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  color: #9be2dc;
+  background: rgba(120, 201, 196, .10);
+  border: 1px solid rgba(120, 201, 196, .24);
+  border-radius: 12px;
+}
+
+.torrent-indexer .ti-mark svg {
+  width: 21px;
+  height: 21px;
+}
+
+.torrent-indexer .ti-heading-copy {
+  min-width: 0;
+}
+
+.torrent-indexer .ti-title {
+  margin: 0;
+  color: var(--color-text-highlight);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.torrent-indexer .ti-subtitle {
+  margin: 3px 0 0;
+  color: var(--color-text-base-muted);
+  font-size: .78rem;
+  line-height: 1.35;
+}
+
+.torrent-indexer .ti-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  padding: 5px 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.torrent-indexer .ti-status-online {
+  color: var(--color-positive);
+  border-color: color-mix(in srgb, var(--color-positive) 32%, transparent);
+  background: color-mix(in srgb, var(--color-positive) 9%, transparent);
+}
+
+.torrent-indexer .ti-status-warn {
+  color: #e3b866;
+  border-color: rgba(227, 184, 102, .32);
+  background: rgba(227, 184, 102, .08);
+}
+
+.torrent-indexer .ti-status-down {
+  color: var(--color-negative);
+  border-color: color-mix(in srgb, var(--color-negative) 32%, transparent);
+  background: color-mix(in srgb, var(--color-negative) 9%, transparent);
+}
+
+.torrent-indexer .ti-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.torrent-indexer .ti-summary {
+  gap: 16px;
+  min-height: 42px;
+  padding: 11px 0;
+  border-top: 1px solid rgba(177, 210, 218, .13);
+  border-bottom: 1px solid rgba(177, 210, 218, .13);
+}
+
+.torrent-indexer .ti-index-count,
+.torrent-indexer .ti-engine-state {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.torrent-indexer .ti-number {
+  color: var(--color-text-highlight);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.torrent-indexer .ti-label,
+.torrent-indexer .ti-engine-label,
+.torrent-indexer .ti-footnote {
+  color: var(--color-text-base-muted);
+  font-size: .76rem;
+}
+
+.torrent-indexer .ti-divider {
+  width: 1px;
+  height: 20px;
+  flex: 0 0 1px;
+  background: rgba(177, 210, 218, .19);
+}
+
+.torrent-indexer .ti-engine-state {
+  flex-wrap: wrap;
+}
+
+.torrent-indexer .ti-engine-value {
+  color: #a9d9d4;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.torrent-indexer .ti-footer {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.torrent-indexer .ti-link {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 10px;
+  color: #a3e1dc;
+  background: rgba(120, 201, 196, .08);
+  border: 1px solid rgba(120, 201, 196, .25);
+  border-radius: 8px;
+  font-size: .78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.torrent-indexer .ti-link svg {
+  width: 15px;
+  height: 15px;
+}
+
+.torrent-indexer .ti-link:hover {
+  color: var(--color-text-highlight);
+  background: rgba(120, 201, 196, .15);
+  border-color: rgba(120, 201, 196, .42);
+}
+
+.torrent-indexer .ti-link:focus-visible {
+  outline: 2px solid #9be2dc;
+  outline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .torrent-indexer .ti-heading {
+    align-items: flex-start;
+  }
+
+  .torrent-indexer .ti-status {
+    margin-top: 2px;
+  }
+
+  .torrent-indexer .ti-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .torrent-indexer .ti-divider {
+    display: none;
+  }
+
+  .torrent-indexer .ti-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
