@@ -1,0 +1,13 @@
+# Include this widget under a Glance page's `widgets:` list.
+# Set TORRENT_INDEXER_URL to an address reachable from the Glance process.
+- type: custom-api
+  title: Torrent Indexer
+  cache: 1m
+  url: ${TORRENT_INDEXER_URL}/healthz
+  template: |
+    {{ if eq (.JSON.String "status") "ok" }}
+    <p class="size-h4 color-positive">● Online</p>
+    {{ else }}
+    <p class="size-h4 color-negative">● Indisponível</p>
+    {{ end }}
+    <p class="size-h6 color-subtle">{{ .JSON.String "service" }}</p>

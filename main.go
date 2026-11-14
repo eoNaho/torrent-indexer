@@ -99,6 +99,7 @@ func main() {
 	indexerMux.HandleFunc("/indexers/manual", indexers.HandlerManualIndexer)
 	indexerMux.HandleFunc("/api", indexers.HandlerTorznabAPI)
 	indexerMux.HandleFunc("/api/", indexers.HandlerTorznabAPI)
+	indexerMux.HandleFunc("/healthz", handler.HandlerHealth)
 	indexerMux.HandleFunc("/search", search.SearchTorrentHandler)
 	indexerMux.HandleFunc("/search/health", search.HealthHandler)
 	indexerMux.HandleFunc("/search/stats", search.StatsHandler)
