@@ -4,6 +4,8 @@
   title: Torrent Indexer
   cache: 1m
   url: ${TORRENT_INDEXER_URL}/healthz
+  options:
+    dashboard-url: ${TORRENT_INDEXER_DASHBOARD_URL}
   template: |
     {{ if eq (.JSON.String "status") "ok" }}
     <p class="size-h4 color-positive">● Online</p>
@@ -11,3 +13,4 @@
     <p class="size-h4 color-negative">● Indisponível</p>
     {{ end }}
     <p class="size-h6 color-subtle">{{ .JSON.String "service" }}</p>
+    <a class="color-highlight" href="{{ .Options.StringOr "dashboard-url" "" }}" target="_blank" rel="noreferrer">Abrir busca ↗</a>
