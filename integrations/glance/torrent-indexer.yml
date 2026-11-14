@@ -1,16 +1,60 @@
 # Include this widget under a Glance page's `widgets:` list.
-# Set TORRENT_INDEXER_URL to an address reachable from the Glance process.
+# TORRENT_INDEXER_URL is reachable from Glance; the dashboard URL is reachable from your browser.
 - type: custom-api
-  title: Torrent Indexer
+  title: Busca do servidor
+  css-class: torrent-indexer
   cache: 1m
-  url: ${TORRENT_INDEXER_URL}/healthz
-  options:
-    dashboard-url: ${TORRENT_INDEXER_DASHBOARD_URL}
+  url: ${TORRENT_INDEXER_URL}/search/stats
+  subrequests:
+    health:
+      url: ${TORRENT_INDEXER_URL}/search/health
   template: |
-    {{ if eq (.JSON.String "status") "ok" }}
-    <p class="size-h4 color-positive">● Online</p>
-    {{ else }}
-    <p class="size-h4 color-negative">● Indisponível</p>
-    {{ end }}
-    <p class="size-h6 color-subtle">{{ .JSON.String "service" }}</p>
-    <a class="color-highlight" href="{{ .Options.StringOr "dashboard-url" "" }}" target="_blank" rel="noreferrer">Abrir busca ↗</a>
+    {{ $health := .Subrequest "health" }}
+    <div class="ti-card">
+      <div class="ti-heading">
+        <span class="ti-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="10.5" cy="10.5" r="6.5"></circle>
+            <path d="m15.5 15.5 5 5"></path>
+            <path d="M8 10.5h5"></path>
+          </svg>
+        </span>
+        <div class="ti-heading-copy">
+          <h3 class="ti-title">Busca do servidor</h3>
+          <p class="ti-subtitle">Filmes e séries em um só lugar</p>
+        </div>
+        {{ if eq ($health.JSON.String "status") "healthy" }}
+          <span class="ti-status ti-status-online" role="status"><span class="ti-dot"></span>Operacional</span>
+        {{ else if eq ($health.JSON.String "status") "degraded" }}
+          <span class="ti-status ti-status-warn" role="status"><span class="ti-dot"></span>Parcial</span>
+        {{ else }}
+          <span class="ti-status ti-status-down" role="status"><span class="ti-dot"></span>Indisponível</span>
+        {{ end }}
+      </div>
+
+      <div class="ti-summary">
+        <div class="ti-index-count">
+          <span class="ti-number">{{ .JSON.Int "numberOfDocuments" | formatNumber }}</span>
+          <span class="ti-label">lançamentos indexados</span>
+        </div>
+        <span class="ti-divider" aria-hidden="true"></span>
+        <div class="ti-engine-state">
+          <span class="ti-engine-label">Meilisearch</span>
+          {{ if .JSON.Bool "isIndexing" }}
+            <span class="ti-engine-value">Indexando agora</span>
+          {{ else }}
+            <span class="ti-engine-value">Pronto para buscar</span>
+          {{ end }}
+        </div>
+      </div>
+
+      <div class="ti-footer">
+        <span class="ti-footnote">Atualizado a cada minuto</span>
+        <a class="ti-link" href="${TORRENT_INDEXER_DASHBOARD_URL}" target="_blank" rel="noreferrer">
+          Buscar no acervo
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 8h9M8 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </a>
+      </div>
+    </div>
