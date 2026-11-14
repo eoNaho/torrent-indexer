@@ -251,6 +251,7 @@ search:
 ## Integrated media tools
 
 - [`integrations/homepage`](integrations/homepage/README.md): optional Homepage UI source for media requests, subtitles, status, and service shortcuts.
+- [`integrations/glance`](integrations/glance/README.md): optional Glance dashboard widget for torrent-indexer availability.
 - [`integrations/media-control/agent`](integrations/media-control/agent/README.md): optional local API backing that UI. It is separate from the torrent-indexer runtime.
 - [`docs/FORK_CONSOLIDATION.md`](docs/FORK_CONSOLIDATION.md): source branches and integration notes.
 
