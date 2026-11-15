@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	handler "github.com/felipemarinho97/torrent-indexer/api"
@@ -15,6 +16,7 @@ import (
 	"github.com/felipemarinho97/torrent-indexer/public"
 	"github.com/felipemarinho97/torrent-indexer/requester"
 	meilisearch "github.com/felipemarinho97/torrent-indexer/search"
+	"github.com/felipemarinho97/torrent-indexer/tmdb"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	str2duration "github.com/xhit/go-str2duration/v2"
@@ -83,23 +85,36 @@ func main() {
 		FallbackTitleEnabled: os.Getenv("FALLBACK_TITLE_ENABLED") == "true",
 	}
 
-	indexers := handler.NewIndexers(icfg, redis, metrics, req, searchIndex, magnetMetadataAPI)
-	search := handler.NewMeilisearchHandler(searchIndex)
+	tmdbClient := tmdb.NewClient(os.Getenv("TMDB_API_KEY"), redis)
+	indexers := handler.NewIndexers(icfg, redis, metrics, req, searchIndex, magnetMetadataAPI, tmdbClient)
+	search := handler.NewMeilisearchHandler(searchIndex, tmdbClient)
+	operations := monitoring.NewOperations("bludv", "comando", "rede_torrent", "starck-filmes", "torrent-dos-filmes", "vaca_torrent", "catalogo-betor", "semtorrent", "manual", "torznab")
 
 	indexerMux := http.NewServeMux()
 	metricsMux := http.NewServeMux()
 
 	indexerMux.HandleFunc("/", handler.HandlerIndex)
-	indexerMux.HandleFunc("/indexers/bludv", indexers.HandlerBluDVIndexer)
-	indexerMux.HandleFunc("/indexers/comando_torrents", indexers.HandlerComandoIndexer)
-	indexerMux.HandleFunc("/indexers/rede_torrent", indexers.HandlerRedeTorrentIndexer)
-	indexerMux.HandleFunc("/indexers/starck-filmes", indexers.HandlerStarckFilmesIndexer)
-	indexerMux.HandleFunc("/indexers/torrent-dos-filmes", indexers.HandlerTorrentDosFilmesIndexer)
-	indexerMux.HandleFunc("/indexers/vaca_torrent", indexers.HandlerVacaTorrentIndexer)
-	indexerMux.HandleFunc("/indexers/catalogo-betor", indexers.HandlerCatalogoBetorIndexer)
-	indexerMux.HandleFunc("/indexers/manual", indexers.HandlerManualIndexer)
-	indexerMux.HandleFunc("/api", indexers.HandlerTorznabAPI)
-	indexerMux.HandleFunc("/api/", indexers.HandlerTorznabAPI)
+	indexerMux.Handle("/indexers/bludv", operations.Wrap("bludv", http.HandlerFunc(indexers.HandlerBluDVIndexer)))
+	indexerMux.Handle("/indexers/comando_torrents", operations.Wrap("comando", http.HandlerFunc(indexers.HandlerComandoIndexer)))
+	indexerMux.Handle("/indexers/rede_torrent", operations.Wrap("rede_torrent", http.HandlerFunc(indexers.HandlerRedeTorrentIndexer)))
+	indexerMux.Handle("/indexers/starck-filmes", operations.Wrap("starck-filmes", http.HandlerFunc(indexers.HandlerStarckFilmesIndexer)))
+	indexerMux.Handle("/indexers/torrent-dos-filmes", operations.Wrap("torrent-dos-filmes", http.HandlerFunc(indexers.HandlerTorrentDosFilmesIndexer)))
+	indexerMux.Handle("/indexers/vaca_torrent", operations.Wrap("vaca_torrent", http.HandlerFunc(indexers.HandlerVacaTorrentIndexer)))
+	indexerMux.Handle("/indexers/catalogo-betor", operations.Wrap("catalogo-betor", http.HandlerFunc(indexers.HandlerCatalogoBetorIndexer)))
+	indexerMux.Handle("/indexers/semtorrent", operations.Wrap("semtorrent", http.HandlerFunc(indexers.HandlerSemTorrentIndexer)))
+	indexerMux.Handle("/indexers/manual", operations.Wrap("manual", http.HandlerFunc(indexers.HandlerManualIndexer)))
+	indexerMux.HandleFunc("/ops", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/ui/ops.html", http.StatusTemporaryRedirect) })
+	indexerMux.HandleFunc("/ops/status", handler.HandlerOperations(operations, redis, searchIndex, tmdbClient != nil))
+	torznabHandler := http.HandlerFunc(indexers.HandlerTorznabAPI)
+	torznabOperations := operations.WrapDynamic(func(r *http.Request) string {
+		name := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api"), "/")
+		if name == "" { name = r.URL.Query().Get("indexer") }
+		if name == "" { name = "torznab" }
+		if name == "comando_torrents" { return "comando" }
+		return name
+	}, torznabHandler)
+	indexerMux.Handle("/api", torznabOperations)
+	indexerMux.Handle("/api/", torznabOperations)
 	indexerMux.HandleFunc("/healthz", handler.HandlerHealth)
 	indexerMux.HandleFunc("/search", search.SearchTorrentHandler)
 	indexerMux.HandleFunc("/search/health", search.HealthHandler)

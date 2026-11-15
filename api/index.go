@@ -11,6 +11,7 @@ import (
 	"github.com/felipemarinho97/torrent-indexer/monitoring"
 	"github.com/felipemarinho97/torrent-indexer/requester"
 	"github.com/felipemarinho97/torrent-indexer/schema"
+	"github.com/felipemarinho97/torrent-indexer/tmdb"
 	meilisearch "github.com/felipemarinho97/torrent-indexer/search"
 )
 
@@ -21,6 +22,7 @@ type Indexer struct {
 	requester         *requester.Requster
 	search            *meilisearch.SearchIndexer
 	magnetMetadataAPI *magnet.MetadataClient
+	tmdb              *tmdb.Client
 	postProcessors    []PostProcessorFunc
 }
 
@@ -63,6 +65,7 @@ func NewIndexers(
 	req *requester.Requster,
 	si *meilisearch.SearchIndexer,
 	mc *magnet.MetadataClient,
+	tmdbClient *tmdb.Client,
 ) *Indexer {
 	return &Indexer{
 		config:            config,
@@ -71,6 +74,7 @@ func NewIndexers(
 		requester:         req,
 		search:            si,
 		magnetMetadataAPI: mc,
+		tmdb:              tmdbClient,
 		postProcessors:    GlobalPostProcessors,
 	}
 }
@@ -106,6 +110,7 @@ func HandlerIndex(w http.ResponseWriter, r *http.Request) {
 		Manual         []EndpointDetail `json:"/indexers/manual"`
 		Search         []EndpointDetail `json:"/search"`
 		UI             []EndpointDetail `json:"/ui/"`
+		Operations     []EndpointDetail `json:"/ops"`
 	}
 
 	type RootResponse struct {
@@ -129,6 +134,7 @@ func HandlerIndex(w http.ResponseWriter, r *http.Request) {
 			"vaca_torrent",
 			"starck-filmes",
 			"catalogo-betor",
+			"semtorrent",
 		},
 		Endpoints: Endpoints{
 			IndexerGeneric: []EndpointDetail{
@@ -165,6 +171,12 @@ func HandlerIndex(w http.ResponseWriter, r *http.Request) {
 				{
 					Method:      "GET",
 					Description: "Show the unified search UI (only work if Meilisearch is enabled)",
+				},
+			},
+			Operations: []EndpointDetail{
+				{
+					Method:      "GET",
+					Description: "Show the operations dashboard",
 				},
 			},
 		},

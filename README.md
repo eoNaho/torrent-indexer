@@ -46,6 +46,7 @@ You can configure the server using the following environment variables:
 - `REQUEST_TIMEOUT_MILLISECONDS`: (optional) Timeout for external scraping requests. Default: `5000`
 - `MEILISEARCH_ADDRESS`: (optional) The address of the MeiliSearch instance. Default: `N/A`
 - `MEILISEARCH_KEY`: (optional) The API key of the MeiliSearch instance. Default: `N/A`
+- `TMDB_API_KEY`: (optional) TMDB v3 API key. When set, newly indexed torrents are enriched in the background with overview, poster, genres, runtime, rating and TMDB link. Metadata is cached in Redis. Default: disabled.
 - `REDIS_HOST`: (optional) The address of the Redis instance. Default: `localhost`
 - `REDIS_PASSWORD`: (optional) The password of the Redis instance. Default: `N/A`
 - `SHORT_LIVED_CACHE_EXPIRATION` (optional) The expiration time of the short-lived cache in duration format. Default: `30m`
@@ -61,6 +62,16 @@ You can configure the server using the following environment variables:
 - `MAGNET_METADATA_API_ADDRESS`: (optional) The address of your magnet metadata API. Default: `N/A`
 - `MAGNET_METADATA_API_TIMEOUT_SECONDS`: (optional) The timeout for the magnet metadata API requests in seconds. Default: `10`
 - `INDEXER_<NAME>_URL`: (optional) Set a custom URL for the indexer. Where the "NAME" will be always uppercase indexer key with underscores. ex: `INDEXER_DODO_FILMES_URL=https://my-proxied-dodo-url.org`
+
+### Operations dashboard
+
+Open `/ops` to view service health, Redis and Meilisearch status, TMDB configuration, and recent request counts, errors, status and duration for each indexer. The dashboard refreshes every 15 seconds. Request counts are in-memory and reset when the process restarts. The JSON snapshot is available at `/ops/status`.
+
+### TMDB metadata
+
+Set `TMDB_API_KEY` to enable metadata enrichment. Existing IMDb IDs are used first; titles and years are used as a fallback. Enrichment is cached in Redis and does not delay indexer responses. Search requests also make a bounded enrichment attempt for existing records, then save successful matches to Meilisearch. The browser search page displays the poster, synopsis, genres, runtime, rating and TMDB link when available.
+
+TMDB metadata and images are provided under TMDB's API terms. The interface includes TMDB attribution: “This product uses the TMDB API but is not endorsed or certified by TMDB.”
 
     | Endpoint (`/indexers/...`) | Variable | Default |
     |---|---|---|

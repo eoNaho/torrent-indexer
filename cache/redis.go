@@ -67,3 +67,7 @@ func (r *Redis) HSet(ctx context.Context, key, field string, value []byte) error
 func (r *Redis) HGetAll(ctx context.Context, key string) (map[string]string, error) {
 	return r.client.HGetAll(ctx, key).Result()
 }
+
+func (r *Redis) Ping(ctx context.Context) error {
+	return r.client.Ping(ctx).Err()
+}

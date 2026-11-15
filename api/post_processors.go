@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/felipemarinho97/torrent-indexer/logging"
 	"github.com/felipemarinho97/torrent-indexer/schema"
@@ -49,8 +51,23 @@ func AppendAudioTags(_ *Indexer, _ *http.Request, torrents []schema.IndexedTorre
 
 // SendToSearchIndexer sends the indexed torrents to the search indexer
 func SendToSearchIndexer(i *Indexer, _ *http.Request, torrents []schema.IndexedTorrent) []schema.IndexedTorrent {
+	if i.search == nil {
+		return torrents
+	}
+	snapshot := append([]schema.IndexedTorrent(nil), torrents...)
 	go func() {
-		_ = i.search.IndexTorrents(torrents)
+		if err := i.search.IndexTorrents(snapshot); err != nil {
+			logging.Error().Err(err).Msg("Failed to index torrents in Meilisearch")
+		}
+		if i.tmdb == nil || len(snapshot) == 0 {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		enriched := i.tmdb.Enrich(ctx, snapshot)
+		if err := i.search.IndexTorrents(enriched); err != nil {
+			logging.Error().Err(err).Msg("Failed to update TMDB metadata in Meilisearch")
+		}
 	}()
 	return torrents
 }

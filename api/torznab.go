@@ -136,6 +136,8 @@ func (i *Indexer) callIndexer(r *http.Request) ([]schema.IndexedTorrent, string)
 			i.HandlerTorrentDosFilmesIndexer(w, r)
 		case "catalogo-betor":
 			i.HandlerCatalogoBetorIndexer(w, r)
+		case "semtorrent":
+			i.HandlerSemTorrentIndexer(w, r)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

@@ -10,9 +10,12 @@ services:
     networks:
       - indexer
     environment:
+      - HOST=0.0.0.0
       - LOG_LEVEL=0 # 0=debug, 1=info, 2=warn, 3=error
       - REDIS_HOST=redis
       - FLARESOLVERR_ADDRESS=http://flaresolverr:8191
+      # Optional: enrich indexed titles with posters, synopsis, genres and ratings.
+      # - TMDB_API_KEY=your-tmdb-v3-api-key
 
       ## Meilisearch configuration (optional)
       # - MEILISEARCH_ADDRESS=http://meilisearch:7700

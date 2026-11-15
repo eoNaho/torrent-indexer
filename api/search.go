@@ -1,17 +1,21 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/felipemarinho97/torrent-indexer/schema"
 	meilisearch "github.com/felipemarinho97/torrent-indexer/search"
+	"github.com/felipemarinho97/torrent-indexer/tmdb"
 )
 
 // MeilisearchHandler handles HTTP requests for Meilisearch integration.
 type MeilisearchHandler struct {
 	Module *meilisearch.SearchIndexer
+	TMDB   *tmdb.Client
 }
 
 // HealthResponse represents the health check response
@@ -32,8 +36,8 @@ type StatsResponse struct {
 }
 
 // NewMeilisearchHandler creates a new instance of MeilisearchHandler.
-func NewMeilisearchHandler(module *meilisearch.SearchIndexer) *MeilisearchHandler {
-	return &MeilisearchHandler{Module: module}
+func NewMeilisearchHandler(module *meilisearch.SearchIndexer, tmdbClient *tmdb.Client) *MeilisearchHandler {
+	return &MeilisearchHandler{Module: module, TMDB: tmdbClient}
 }
 
 // SearchTorrentHandler handles the searching of torrent items.
@@ -92,6 +96,32 @@ func (h *MeilisearchHandler) SearchTorrentHandler(w http.ResponseWriter, r *http
 	}
 	if len(results) > limit {
 		results = results[:limit]
+	}
+	if h.TMDB != nil && len(results) > 0 {
+		needsEnrichment := false
+		for _, result := range results {
+			if result.TMDBID == 0 {
+				needsEnrichment = true
+				break
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+		results = h.TMDB.Enrich(ctx, results)
+		cancel()
+		// Keep the enriched result in the search index for later requests.
+		if needsEnrichment && h.Module != nil {
+			updated := false
+			for _, result := range results {
+				if result.TMDBID != 0 {
+					updated = true
+					break
+				}
+			}
+			if updated {
+				snapshot := append([]schema.IndexedTorrent(nil), results...)
+				go func() { _ = h.Module.IndexTorrents(snapshot) }()
+			}
+		}
 	}
 
 	// Format response to match indexers structure

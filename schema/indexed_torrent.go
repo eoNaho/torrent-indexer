@@ -8,6 +8,16 @@ type IndexedTorrent struct {
 	Details       string    `json:"details"`
 	Year          string    `json:"year"`
 	IMDB          string    `json:"imdb"`
+	TMDBID        int       `json:"tmdb_id,omitempty"`
+	TMDBType      string    `json:"tmdb_type,omitempty"`
+	TMDBURL       string    `json:"tmdb_url,omitempty"`
+	TMDBOverview  string    `json:"tmdb_overview,omitempty"`
+	TMDBPoster    string    `json:"tmdb_poster,omitempty"`
+	TMDBBackdrop  string    `json:"tmdb_backdrop,omitempty"`
+	TMDBGenres    []string  `json:"tmdb_genres,omitempty"`
+	TMDBRuntime   int       `json:"tmdb_runtime,omitempty"`
+	TMDBRating    float64   `json:"tmdb_rating,omitempty"`
+	TMDBRelease   string    `json:"tmdb_release,omitempty"`
 	Audio         []Audio   `json:"audio"`
 	MagnetLink    string    `json:"magnet_link"`
 	Date          time.Time `json:"date"`
