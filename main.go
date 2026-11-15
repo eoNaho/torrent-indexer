@@ -96,6 +96,7 @@ func main() {
 	indexerMux.HandleFunc("/indexers/starck-filmes", indexers.HandlerStarckFilmesIndexer)
 	indexerMux.HandleFunc("/indexers/torrent-dos-filmes", indexers.HandlerTorrentDosFilmesIndexer)
 	indexerMux.HandleFunc("/indexers/vaca_torrent", indexers.HandlerVacaTorrentIndexer)
+	indexerMux.HandleFunc("/indexers/catalogo-betor", indexers.HandlerCatalogoBetorIndexer)
 	indexerMux.HandleFunc("/indexers/manual", indexers.HandlerManualIndexer)
 	indexerMux.HandleFunc("/api", indexers.HandlerTorznabAPI)
 	indexerMux.HandleFunc("/api/", indexers.HandlerTorznabAPI)

@@ -128,6 +128,7 @@ func HandlerIndex(w http.ResponseWriter, r *http.Request) {
 			"rede_torrent",
 			"vaca_torrent",
 			"starck-filmes",
+			"catalogo-betor",
 		},
 		Endpoints: Endpoints{
 			IndexerGeneric: []EndpointDetail{
