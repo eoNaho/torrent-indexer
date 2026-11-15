@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/felipemarinho97/torrent-indexer/schema"
@@ -14,8 +19,9 @@ import (
 
 // MeilisearchHandler handles HTTP requests for Meilisearch integration.
 type MeilisearchHandler struct {
-	Module *meilisearch.SearchIndexer
-	TMDB   *tmdb.Client
+	Module   *meilisearch.SearchIndexer
+	TMDB     *tmdb.Client
+	Indexers *Indexer
 }
 
 // HealthResponse represents the health check response
@@ -40,6 +46,11 @@ func NewMeilisearchHandler(module *meilisearch.SearchIndexer, tmdbClient *tmdb.C
 	return &MeilisearchHandler{Module: module, TMDB: tmdbClient}
 }
 
+// SetIndexers configures the live indexers used as fallback when Meilisearch has no hits.
+func (h *MeilisearchHandler) SetIndexers(idx *Indexer) {
+	h.Indexers = idx
+}
+
 // SearchTorrentHandler handles the searching of torrent items.
 func (h *MeilisearchHandler) SearchTorrentHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -47,7 +58,8 @@ func (h *MeilisearchHandler) SearchTorrentHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	query := r.URL.Query().Get("q")
+	rawQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := rawQuery
 	if query == "" {
 		query = time.Now().Format("2006-01-02") // needed for prowlar/jackett empty queries
 	}
@@ -71,8 +83,17 @@ func (h *MeilisearchHandler) SearchTorrentHandler(w http.ResponseWriter, r *http
 		}
 	}
 
-	results, err := h.Module.SearchTorrent(query, searchLimit)
-	if err != nil {
+	liveParam := r.URL.Query().Get("live")
+	var results []schema.IndexedTorrent
+	var err error
+	if liveParam != "1" && h.Module != nil {
+		results, err = h.Module.SearchTorrent(query, searchLimit)
+	}
+
+	if (err != nil || len(results) == 0) && rawQuery != "" && liveParam != "0" && h.Indexers != nil {
+		results = h.searchLiveIndexers(r.Context(), r, rawQuery)
+		err = nil
+	} else if err != nil {
 		http.Error(w, "Failed to search torrents", http.StatusInternalServerError)
 		return
 	}
@@ -229,4 +250,101 @@ func hasSearchFilters(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+func (h *MeilisearchHandler) searchLiveIndexers(parentCtx context.Context, r *http.Request, query string) []schema.IndexedTorrent {
+	type liveSource struct {
+		name    string
+		handler http.HandlerFunc
+	}
+
+	sources := []liveSource{
+		{name: "catalogo-betor", handler: h.Indexers.HandlerCatalogoBetorIndexer},
+		{name: "semtorrent", handler: h.Indexers.HandlerSemTorrentIndexer},
+		{name: "comando_torrents", handler: h.Indexers.HandlerComandoIndexer},
+		{name: "bludv", handler: h.Indexers.HandlerBluDVIndexer},
+		{name: "rede_torrent", handler: h.Indexers.HandlerRedeTorrentIndexer},
+		{name: "starck-filmes", handler: h.Indexers.HandlerStarckFilmesIndexer},
+		{name: "torrent-dos-filmes", handler: h.Indexers.HandlerTorrentDosFilmesIndexer},
+	}
+
+	ctx, cancel := context.WithTimeout(parentCtx, 12*time.Second)
+	defer cancel()
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	byHash := make(map[string]schema.IndexedTorrent)
+	var withoutHash []schema.IndexedTorrent
+
+	for _, src := range sources {
+		src := src
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			targetURL := "/indexers/" + src.name + "?q=" + url.QueryEscape(query)
+			if r != nil {
+				params := url.Values{}
+				params.Set("q", query)
+				for _, key := range []string{"page", "audio", "year", "imdb", "min_seeds", "season", "episode"} {
+					if v := r.URL.Query().Get(key); v != "" {
+						params.Set(key, v)
+					}
+				}
+				targetURL = "/indexers/" + src.name + "?" + params.Encode()
+			}
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+			if err != nil {
+				return
+			}
+			rr := httptest.NewRecorder()
+			src.handler(rr, req)
+			if rr.Code != http.StatusOK {
+				return
+			}
+
+			var resp Response
+			if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+				return
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			for _, item := range resp.Results {
+				if item.Similarity <= 0 {
+					continue
+				}
+				key := strings.ToLower(strings.TrimSpace(item.InfoHash))
+				if key == "" {
+					withoutHash = append(withoutHash, item)
+					continue
+				}
+				existing, exists := byHash[key]
+				if !exists || item.SeedCount > existing.SeedCount || (existing.Size == "" && item.Size != "") {
+					byHash[key] = item
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	merged := make([]schema.IndexedTorrent, 0, len(byHash)+len(withoutHash))
+	for _, item := range byHash {
+		merged = append(merged, item)
+	}
+	merged = append(merged, withoutHash...)
+
+	slices.SortFunc(merged, func(a, b schema.IndexedTorrent) int {
+		if a.Similarity != b.Similarity {
+			if b.Similarity > a.Similarity {
+				return 1
+			}
+			return -1
+		}
+		return b.SeedCount - a.SeedCount
+	})
+
+	return merged
 }

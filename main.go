@@ -88,6 +88,7 @@ func main() {
 	tmdbClient := tmdb.NewClient(os.Getenv("TMDB_API_KEY"), redis)
 	indexers := handler.NewIndexers(icfg, redis, metrics, req, searchIndex, magnetMetadataAPI, tmdbClient)
 	search := handler.NewMeilisearchHandler(searchIndex, tmdbClient)
+	search.SetIndexers(indexers)
 	operations := monitoring.NewOperations("bludv", "comando", "rede_torrent", "starck-filmes", "torrent-dos-filmes", "vaca_torrent", "catalogo-betor", "semtorrent", "manual", "torznab")
 
 	indexerMux := http.NewServeMux()
